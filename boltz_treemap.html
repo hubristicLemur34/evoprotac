@@ -1,0 +1,988 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Boltz Architecture Map</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;600;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0c10;
+    --surface: #10141c;
+    --border: #1e2535;
+    --accent-blue: #3b82f6;
+    --accent-cyan: #06b6d4;
+    --accent-green: #10b981;
+    --accent-amber: #f59e0b;
+    --accent-purple: #8b5cf6;
+    --accent-red: #ef4444;
+    --accent-pink: #ec4899;
+    --text-primary: #e2e8f0;
+    --text-secondary: #64748b;
+    --text-dim: #334155;
+    --highlight: #fbbf24;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text-primary);
+    font-family: 'JetBrains Mono', monospace;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  header {
+    padding: 28px 40px 20px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: baseline;
+    gap: 16px;
+    background: linear-gradient(180deg, #0d1117 0%, var(--bg) 100%);
+  }
+
+  header h1 {
+    font-family: 'Syne', sans-serif;
+    font-size: 1.6rem;
+    font-weight: 800;
+    color: var(--text-primary);
+    letter-spacing: -0.5px;
+  }
+
+  header span {
+    font-size: 0.72rem;
+    color: var(--text-secondary);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+
+  .legend {
+    display: flex;
+    gap: 20px;
+    padding: 12px 40px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    flex-wrap: wrap;
+  }
+
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.68rem;
+    color: var(--text-secondary);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+
+  .legend-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 2px;
+  }
+
+  .canvas {
+    padding: 40px;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    position: relative;
+  }
+
+  /* ---- FLOW DIAGRAM ---- */
+  .flow {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0;
+    width: 100%;
+    max-width: 1100px;
+    margin: 0 auto;
+  }
+
+  /* Row of nodes */
+  .flow-row {
+    display: flex;
+    justify-content: center;
+    gap: 16px;
+    width: 100%;
+    position: relative;
+  }
+
+  .connector-v {
+    width: 2px;
+    height: 32px;
+    background: linear-gradient(180deg, var(--border), var(--border));
+    margin: 0 auto;
+    position: relative;
+  }
+
+  .connector-v::after {
+    content: '';
+    position: absolute;
+    bottom: -5px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 0;
+    height: 0;
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    border-top: 6px solid var(--border);
+  }
+
+  .connector-h-group {
+    display: flex;
+    width: 100%;
+    justify-content: center;
+    align-items: flex-start;
+    position: relative;
+    height: 50px;
+  }
+
+  /* Node card */
+  .node {
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 14px 18px;
+    background: var(--surface);
+    position: relative;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    flex-shrink: 0;
+  }
+
+  .node:hover {
+    transform: translateY(-2px);
+    border-color: var(--node-color, var(--accent-blue));
+    box-shadow: 0 0 18px -4px var(--node-color, var(--accent-blue));
+  }
+
+  .node.active {
+    border-color: var(--node-color, var(--accent-blue));
+    box-shadow: 0 0 24px -4px var(--node-color, var(--accent-blue));
+  }
+
+  .node-label {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--node-color, var(--text-primary));
+    letter-spacing: 0.03em;
+  }
+
+  .node-sub {
+    font-size: 0.62rem;
+    color: var(--text-secondary);
+    margin-top: 3px;
+    letter-spacing: 0.02em;
+  }
+
+  .node-badge {
+    position: absolute;
+    top: -8px;
+    right: 8px;
+    font-size: 0.55rem;
+    padding: 2px 6px;
+    border-radius: 3px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-weight: 700;
+  }
+
+  /* Color variants */
+  .node.input { --node-color: var(--accent-amber); }
+  .node.input .node-badge { background: var(--accent-amber); color: #000; }
+
+  .node.parse { --node-color: var(--accent-pink); }
+  .node.parse .node-badge { background: var(--accent-pink); color: #fff; }
+
+  .node.highlight-parse {
+    --node-color: var(--highlight);
+    border: 2px solid var(--highlight);
+    background: #1a1400;
+  }
+  .node.highlight-parse .node-badge { background: var(--highlight); color: #000; }
+
+  .node.process { --node-color: var(--accent-cyan); }
+  .node.process .node-badge { background: var(--accent-cyan); color: #000; }
+
+  .node.model { --node-color: var(--accent-purple); }
+  .node.model .node-badge { background: var(--accent-purple); color: #fff; }
+
+  .node.output { --node-color: var(--accent-green); }
+  .node.output .node-badge { background: var(--accent-green); color: #000; }
+
+  .node.infra { --node-color: var(--accent-blue); }
+  .node.infra .node-badge { background: var(--accent-blue); color: #fff; }
+
+  .node.util { --node-color: #6b7280; }
+
+  /* Wide node */
+  .node.wide { min-width: 240px; text-align: center; }
+  .node.narrow { min-width: 150px; text-align: center; }
+  .node.med { min-width: 190px; text-align: center; }
+
+  /* Branching lines */
+  .branch-line {
+    position: absolute;
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    width: 0;
+    height: 100%;
+  }
+
+  /* Tooltip panel */
+  #tooltip {
+    position: fixed;
+    right: 30px;
+    top: 120px;
+    width: 300px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 20px;
+    z-index: 100;
+    transition: opacity 0.2s;
+    pointer-events: none;
+  }
+
+  #tooltip.hidden { opacity: 0; }
+
+  #tooltip h3 {
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: var(--accent-cyan);
+    margin-bottom: 8px;
+    font-family: 'Syne', sans-serif;
+  }
+
+  #tooltip p {
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+    line-height: 1.6;
+    margin-bottom: 10px;
+  }
+
+  #tooltip .detail-list {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  #tooltip .detail-list li {
+    font-size: 0.65rem;
+    color: var(--text-dim);
+    padding-left: 10px;
+    position: relative;
+    line-height: 1.4;
+  }
+
+  #tooltip .detail-list li::before {
+    content: '›';
+    position: absolute;
+    left: 0;
+    color: var(--accent-cyan);
+  }
+
+  /* SVG connectors */
+  .svg-connectors {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    overflow: visible;
+  }
+
+  /* Section labels */
+  .section-label {
+    font-size: 0.6rem;
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    color: var(--text-dim);
+    text-align: center;
+    padding: 6px 0 2px;
+  }
+
+  /* Inline flow for parse branch */
+  .parse-group {
+    display: flex;
+    gap: 0;
+    align-items: stretch;
+    justify-content: center;
+    position: relative;
+  }
+
+  .parse-branch-header {
+    font-size: 0.6rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--highlight);
+    text-align: center;
+    padding: 4px 0 8px;
+    font-weight: 700;
+  }
+
+  .arrow-down {
+    width: 2px;
+    background: var(--border);
+    height: 28px;
+    margin: 0 auto;
+    position: relative;
+  }
+
+  .arrow-down::after {
+    content: '▼';
+    position: absolute;
+    bottom: -12px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 8px;
+    color: var(--border);
+  }
+
+  .horiz-connector {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    justify-content: center;
+    position: relative;
+    height: 40px;
+  }
+
+  .hline {
+    height: 2px;
+    background: var(--border);
+    flex: 1;
+  }
+
+  .junction-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--border);
+    flex-shrink: 0;
+  }
+
+  .branch-arms {
+    display: flex;
+    justify-content: center;
+    gap: 24px;
+    align-items: flex-start;
+    position: relative;
+  }
+
+  .branch-arm {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .arm-line {
+    width: 2px;
+    height: 30px;
+    background: var(--border);
+    position: relative;
+  }
+
+  .arm-line.top::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 0;
+    height: 0;
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    border-top: 6px solid var(--border);
+  }
+
+  .arm-line.top-arrow::after {
+    content: '';
+    position: absolute;
+    bottom: -5px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 0;
+    height: 0;
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    border-top: 6px solid var(--border);
+  }
+
+  /* horizontal bar for branching */
+  .hbar {
+    height: 2px;
+    background: var(--border);
+    margin: 0 auto;
+  }
+
+  .branch-group {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0;
+    width: 100%;
+  }
+
+  .multi-row {
+    display: flex;
+    gap: 16px;
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+
+  .info-footer {
+    text-align: center;
+    font-size: 0.62rem;
+    color: var(--text-dim);
+    padding: 20px 40px 40px;
+    letter-spacing: 0.05em;
+  }
+
+  /* highlight box */
+  .highlight-section {
+    border: 1px dashed var(--highlight);
+    border-radius: 10px;
+    padding: 20px;
+    position: relative;
+    background: rgba(251, 191, 36, 0.03);
+  }
+  .highlight-section-label {
+    position: absolute;
+    top: -10px;
+    left: 16px;
+    font-size: 0.6rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    background: var(--bg);
+    padding: 0 8px;
+    color: var(--highlight);
+    font-weight: 700;
+  }
+
+  .tag {
+    display: inline-block;
+    font-size: 0.58rem;
+    padding: 1px 5px;
+    border-radius: 3px;
+    margin: 2px 2px 0;
+    background: rgba(255,255,255,0.05);
+    color: var(--text-secondary);
+    letter-spacing: 0.04em;
+  }
+
+  @keyframes pulse-border {
+    0%, 100% { box-shadow: 0 0 12px -3px var(--highlight); }
+    50% { box-shadow: 0 0 24px -2px var(--highlight); }
+  }
+
+  .node.highlight-parse {
+    animation: pulse-border 2.5s ease-in-out infinite;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Boltz Architecture</h1>
+  <span>predict() data flow · hover nodes for details</span>
+</header>
+
+<div class="legend">
+  <div class="legend-item"><div class="legend-dot" style="background:var(--accent-amber)"></div>Input</div>
+  <div class="legend-item"><div class="legend-dot" style="background:var(--highlight)"></div>YAML/FASTA parsing (focus)</div>
+  <div class="legend-item"><div class="legend-dot" style="background:var(--accent-pink)"></div>Parse modules</div>
+  <div class="legend-item"><div class="legend-dot" style="background:var(--accent-cyan)"></div>Processing</div>
+  <div class="legend-item"><div class="legend-dot" style="background:var(--accent-purple)"></div>Model</div>
+  <div class="legend-item"><div class="legend-dot" style="background:var(--accent-green)"></div>Output</div>
+  <div class="legend-item"><div class="legend-dot" style="background:var(--accent-blue)"></div>Infrastructure</div>
+</div>
+
+<div class="canvas">
+<div class="flow">
+
+  <!-- 1. CLI ENTRY -->
+  <div class="flow-row">
+    <div class="node input wide" data-id="cli" onclick="showTip(this)">
+      <div class="node-badge">entrypoint</div>
+      <div class="node-label">boltz predict</div>
+      <div class="node-sub">CLI command via @click.command()</div>
+    </div>
+  </div>
+
+  <div class="arrow-down"></div>
+
+  <!-- 2. DOWNLOAD CHECK -->
+  <div class="flow-row">
+    <div class="node infra med" data-id="download" onclick="showTip(this)">
+      <div class="node-badge">download</div>
+      <div class="node-label">download_boltz1/2()</div>
+      <div class="node-sub">CCD/mols + model weights</div>
+    </div>
+  </div>
+
+  <div class="arrow-down"></div>
+  <div class="arrow-down"></div>
+
+  <!-- YAML/FASTA FOCUS SECTION -->
+  <div class="highlight-section" style="width:100%;max-width:900px;margin:0 auto;">
+    <div class="highlight-section-label">★ YAML / FASTA Interpretation Pipeline</div>
+
+    <!-- check_inputs -->
+    <div class="branch-group">
+      <div class="node highlight-parse wide" data-id="check_inputs" onclick="showTip(this)" style="margin:0 auto;">
+        <div class="node-badge">step 1</div>
+        <div class="node-label">check_inputs(data)</div>
+        <div class="node-sub">validates files · filters .fa/.fasta/.yaml/.yml</div>
+      </div>
+
+      <div class="arrow-down"></div>
+
+      <!-- process_inputs -->
+      <div class="node highlight-parse wide" data-id="process_inputs" onclick="showTip(this)" style="margin:0 auto;">
+        <div class="node-badge">step 2</div>
+        <div class="node-label">process_inputs()</div>
+        <div class="node-sub">orchestrates multi-threaded preprocessing</div>
+      </div>
+
+      <div class="arrow-down"></div>
+
+      <!-- process_input -->
+      <div class="node highlight-parse wide" data-id="process_input" onclick="showTip(this)" style="margin:0 auto;">
+        <div class="node-badge">step 3 · per file</div>
+        <div class="node-label">process_input(path, ccd, …)</div>
+        <div class="node-sub">dispatches to correct parser based on file suffix</div>
+      </div>
+    </div>
+
+    <div class="arrow-down"></div>
+
+    <!-- branch: fasta vs yaml -->
+    <div class="parse-branch-header">branches by file type</div>
+
+    <div class="branch-arms">
+      <div class="branch-arm">
+        <div class="node parse narrow" data-id="parse_fasta" onclick="showTip(this)">
+          <div class="node-badge">.fa/.fasta</div>
+          <div class="node-label">parse_fasta()</div>
+          <div class="node-sub">sequence only</div>
+        </div>
+        <div class="arm-line top-arrow"></div>
+      </div>
+
+      <div class="branch-arm">
+        <div class="node parse narrow" data-id="parse_yaml" onclick="showTip(this)">
+          <div class="node-badge">.yaml/.yml</div>
+          <div class="node-label">parse_yaml()</div>
+          <div class="node-sub">rich config</div>
+        </div>
+        <div class="arm-line top-arrow"></div>
+      </div>
+    </div>
+
+    <!-- shared output: Target object -->
+    <div class="arrow-down" style="margin-top:6px;"></div>
+
+    <div class="node highlight-parse wide" data-id="target" onclick="showTip(this)" style="margin:0 auto;">
+      <div class="node-badge">parsed object</div>
+      <div class="node-label">Target object</div>
+      <div class="node-sub">record · structure · sequences · templates · constraints · extra_mols</div>
+    </div>
+  </div>
+
+  <!-- ─── post-parse processing ─── -->
+  <div class="section-label" style="padding-top:20px;">Post-parse processing steps</div>
+  <div class="arrow-down"></div>
+
+  <div class="multi-row" style="max-width:900px;margin:0 auto;">
+    <div class="node process narrow" data-id="msa_gen" onclick="showTip(this)">
+      <div class="node-badge">MSA</div>
+      <div class="node-label">compute_msa()</div>
+      <div class="node-sub">mmseqs2 server<br>for protein chains</div>
+    </div>
+    <div class="node process narrow" data-id="msa_parse" onclick="showTip(this)">
+      <div class="node-badge">MSA parse</div>
+      <div class="node-label">parse_a3m / parse_csv</div>
+      <div class="node-sub">→ MSA.npz files</div>
+    </div>
+    <div class="node process narrow" data-id="dump_files" onclick="showTip(this)">
+      <div class="node-badge">dump</div>
+      <div class="node-label">Dump processed files</div>
+      <div class="node-sub">structures · templates<br>constraints · mols · records</div>
+    </div>
+  </div>
+
+  <div class="arrow-down"></div>
+
+  <!-- Manifest -->
+  <div class="flow-row">
+    <div class="node process med" data-id="manifest" onclick="showTip(this)">
+      <div class="node-badge">manifest</div>
+      <div class="node-label">Manifest.json</div>
+      <div class="node-sub">index of all processed records</div>
+    </div>
+  </div>
+
+  <div class="arrow-down"></div>
+
+  <!-- Filter -->
+  <div class="flow-row">
+    <div class="node infra med" data-id="filter" onclick="showTip(this)">
+      <div class="node-badge">filter</div>
+      <div class="node-label">filter_inputs_structure()</div>
+      <div class="node-sub">skip existing predictions unless --override</div>
+    </div>
+  </div>
+
+  <div class="arrow-down"></div>
+
+  <!-- DataModule -->
+  <div class="flow-row">
+    <div class="node process med" data-id="datamodule" onclick="showTip(this)">
+      <div class="node-badge">dataloader</div>
+      <div class="node-label">Boltz2InferenceDataModule</div>
+      <div class="node-sub">or BoltzInferenceDataModule</div>
+    </div>
+  </div>
+
+  <div class="arrow-down"></div>
+
+  <!-- Model Loading & Inference -->
+  <div class="section-label">model inference</div>
+  <div class="arrow-down"></div>
+
+  <div class="multi-row" style="max-width:900px;margin:0 auto;">
+    <div class="node model narrow" data-id="boltz2" onclick="showTip(this)">
+      <div class="node-badge">boltz2</div>
+      <div class="node-label">Boltz2</div>
+      <div class="node-sub">64-block Pairformer<br>bf16-mixed</div>
+    </div>
+    <div class="node model narrow" data-id="boltz1" onclick="showTip(this)">
+      <div class="node-badge">boltz1</div>
+      <div class="node-label">Boltz1</div>
+      <div class="node-sub">48-block Pairformer<br>fp32</div>
+    </div>
+    <div class="node model narrow" data-id="affinity" onclick="showTip(this)">
+      <div class="node-badge">optional</div>
+      <div class="node-label">Boltz2 Affinity</div>
+      <div class="node-sub">boltz2_aff.ckpt<br>MW correction opt.</div>
+    </div>
+  </div>
+
+  <div class="arrow-down"></div>
+
+  <!-- Trainer -->
+  <div class="flow-row">
+    <div class="node infra med" data-id="trainer" onclick="showTip(this)">
+      <div class="node-badge">pytorch-lightning</div>
+      <div class="node-label">Trainer.predict()</div>
+      <div class="node-sub">DDP strategy · multi-GPU support</div>
+    </div>
+  </div>
+
+  <div class="arrow-down"></div>
+
+  <!-- Outputs -->
+  <div class="section-label">outputs</div>
+  <div class="arrow-down"></div>
+
+  <div class="multi-row" style="max-width:900px;margin:0 auto;">
+    <div class="node output narrow" data-id="struct_out" onclick="showTip(this)">
+      <div class="node-badge">structure</div>
+      <div class="node-label">BoltzWriter</div>
+      <div class="node-sub">.mmcif or .pdb<br>PAE/PDE npz<br>embeddings opt.</div>
+    </div>
+    <div class="node output narrow" data-id="aff_out" onclick="showTip(this)">
+      <div class="node-badge">affinity</div>
+      <div class="node-label">BoltzAffinityWriter</div>
+      <div class="node-sub">affinity_{id}.json<br>ΔG prediction</div>
+    </div>
+    <div class="node output narrow" data-id="conf_out" onclick="showTip(this)">
+      <div class="node-badge">confidence</div>
+      <div class="node-label">Confidence scores</div>
+      <div class="node-sub">pTM · ipTM<br>per-residue pLDDT</div>
+    </div>
+  </div>
+
+</div><!-- end .flow -->
+</div><!-- end .canvas -->
+
+<!-- TOOLTIP -->
+<div id="tooltip" class="hidden">
+  <h3 id="tip-title">–</h3>
+  <p id="tip-desc">–</p>
+  <ul class="detail-list" id="tip-list"></ul>
+</div>
+
+<div class="info-footer">click any node to see details · boltz/main.py · boltz-community/boltz</div>
+
+<script>
+const DATA = {
+  cli: {
+    title: "boltz predict (CLI entrypoint)",
+    desc: "The main @cli.command() decorated function. Parses all flags via Click, sets up environment, and orchestrates the entire pipeline.",
+    details: [
+      "--model boltz1|boltz2 (default: boltz2)",
+      "--use_msa_server: enable MMSeqs2 MSA generation",
+      "--devices / --accelerator: GPU/CPU/TPU",
+      "--diffusion_samples, --sampling_steps",
+      "Reads BOLTZ_CACHE, BOLTZ_MSA_USERNAME env vars",
+      "Sets torch.set_grad_enabled(False) for inference",
+    ]
+  },
+  download: {
+    title: "download_boltz1/2(cache)",
+    desc: "Downloads model weights and chemical data to the cache directory. Skips if files already exist. Has fallback URLs.",
+    details: [
+      "boltz1: downloads ccd.pkl + boltz1_conf.ckpt",
+      "boltz2: downloads mols.tar (CCD expanded) + boltz2_conf.ckpt + boltz2_aff.ckpt",
+      "Primary URL: model-gateway.boltz.bio",
+      "Fallback: huggingface.co/boltz-community",
+      "@rank_zero_only — only runs on primary GPU process",
+    ]
+  },
+  check_inputs: {
+    title: "check_inputs(data) — Step 1",
+    desc: "Validates that all supplied files are parseable types. Raises RuntimeError on directories or unsupported extensions.",
+    details: [
+      "Accepts a directory or single file path",
+      "Allowed extensions: .fa, .fas, .fasta, .yml, .yaml",
+      "Returns list[Path] of input files",
+      "Errors on unknown file types immediately",
+    ]
+  },
+  process_inputs: {
+    title: "process_inputs() — Step 2",
+    desc: "Orchestrates multi-threaded preprocessing. Skips already-processed records, validates auth methods, creates all output subdirectories.",
+    details: [
+      "Checks records_dir for existing processed inputs",
+      "Validates mutual exclusivity of basic auth vs API key",
+      "Creates: msa/, processed/records/, structures/, msa/, constraints/, templates/, mols/",
+      "Loads CCD: load_canonicals(mol_dir) for boltz2, pickle.load(ccd.pkl) for boltz1",
+      "Runs pool.imap(process_input, data) with N threads",
+      "Writes manifest.json on completion",
+    ]
+  },
+  process_input: {
+    title: "process_input(path, ccd, …) — Step 3",
+    desc: "Per-file processor. Dispatches to the correct parser, handles MSA generation, dumps all intermediate files.",
+    details: [
+      "Dispatches: .fasta → parse_fasta(), .yaml → parse_yaml()",
+      "Identifies protein chains needing MSA (msa_id == 0)",
+      "Calls compute_msa() if --use_msa_server",
+      "Parses existing MSAs: .a3m → parse_a3m(), .csv → parse_csv()",
+      "Dumps: structure.npz, record.json, msa.npz, constraints.npz, templates.npz, mols.pkl",
+      "Wrapped in try/except — failures print traceback but don't abort",
+    ]
+  },
+  parse_fasta: {
+    title: "parse_fasta(path, ccd, mol_dir, boltz2)",
+    desc: "Parses a FASTA file into a Target object. Simpler format: one or more sequences, no ligand config.",
+    details: [
+      "Reads sequence headers and sequences",
+      "Infers chain type from sequence content (protein vs RNA vs DNA)",
+      "Creates Record with chain list",
+      "MSA is not provided → chains get msa_id=0 (to be generated)",
+      "No templates, no constraints in plain FASTA",
+      "Returns: Target(record, structure, sequences, templates={}, constraints, extra_mols={})",
+    ]
+  },
+  parse_yaml: {
+    title: "parse_yaml(path, ccd, mol_dir, boltz2)",
+    desc: "Parses a YAML config file — the rich input format supporting ligands, templates, constraints, custom MSAs, and affinity targets.",
+    details: [
+      "Supports sequences: [protein|dna|rna|ligand] blocks",
+      "Ligands referenced by CCD ID or SMILES string",
+      "Per-chain msa: field to point to existing .a3m or .csv",
+      "templates: section for structural templates",
+      "constraints: distance/contact restraints",
+      "affinity: true flag to trigger affinity model",
+      "method: cryo_em|x_ray|etc. for method conditioning",
+      "Returns: fully populated Target object",
+    ]
+  },
+  target: {
+    title: "Target object (parsed output)",
+    desc: "The central data structure produced by both parsers. Contains everything needed to run the model.",
+    details: [
+      "record: Record — chain metadata, MSA ids, entity ids",
+      "structure: Structure — atom coords, residue info",
+      "sequences: dict[entity_id → sequence string]",
+      "templates: dict[id → Template] structural templates",
+      "residue_constraints: ResidueConstraints",
+      "extra_mols: dict of RDKit mol objects (ligands)",
+    ]
+  },
+  msa_gen: {
+    title: "compute_msa(data, target_id, msa_dir, …)",
+    desc: "Calls MMSeqs2 server to generate multiple sequence alignments for all protein chains that don't have a pre-supplied MSA.",
+    details: [
+      "Runs paired MSA (for complex co-evolution) if >1 protein chain",
+      "Always runs unpaired MSA per chain",
+      "Supports basic auth (username/password) or API key auth",
+      "Paired seqs capped at const.max_paired_seqs",
+      "Output: {name}.csv with key,sequence columns",
+      "Pairing strategy: greedy (default) or complete",
+    ]
+  },
+  msa_parse: {
+    title: "parse_a3m / parse_csv → MSA.npz",
+    desc: "Parses raw MSA files into compact numpy arrays, then dumps to .npz for fast loading during training/inference.",
+    details: [
+      "parse_a3m: reads Stockholm/A3M format alignments",
+      "parse_csv: reads key,sequence CSV (boltz's own format)",
+      "max_seqs parameter caps MSA depth",
+      "MSA.dump(path) serializes to .npz",
+      "Each chain entity gets its own {target_id}_{msa_idx}.npz",
+    ]
+  },
+  dump_files: {
+    title: "Dump processed files",
+    desc: "After parsing and MSA processing, all intermediate artifacts are serialized to disk in the processed/ directory.",
+    details: [
+      "structure.npz → processed/structures/",
+      "msa.npz → processed/msa/",
+      "record.json → processed/records/",
+      "constraints.npz → processed/constraints/",
+      "templates.npz → processed/templates/",
+      "mols.pkl → processed/mols/ (RDKit mol objects)",
+    ]
+  },
+  manifest: {
+    title: "Manifest.json",
+    desc: "A JSON index of all successfully processed records. Used downstream to drive the DataLoader.",
+    details: [
+      "Lists all Record objects with their metadata",
+      "Written after all process_input() calls complete",
+      "Loaded by filter_inputs_structure() and DataModule",
+      "Re-used on subsequent runs to skip processed inputs",
+    ]
+  },
+  filter: {
+    title: "filter_inputs_structure() / filter_inputs_affinity()",
+    desc: "Checks which predictions already exist in predictions/ and removes them from the manifest unless --override is set.",
+    details: [
+      "Checks predictions/{record_id}/ folder existence",
+      "For affinity: checks for affinity_{id}.json file",
+      "Prints count of skipped predictions",
+      "--override flag forces re-running everything",
+    ]
+  },
+  datamodule: {
+    title: "Boltz2InferenceDataModule / BoltzInferenceDataModule",
+    desc: "PyTorch Lightning DataModule that loads processed npz files and feeds batches to the model.",
+    details: [
+      "Reads from processed/ directory",
+      "Handles target structures, MSAs, templates, constraints, extra mols",
+      "override_method: inject experimental method type",
+      "affinity=True mode: reads from predictions/ (uses structure predictions as input)",
+      "num_workers: parallel dataloader workers",
+    ]
+  },
+  boltz2: {
+    title: "Boltz2 model",
+    desc: "Main structure prediction model for Boltz-2. Larger and more capable than Boltz-1.",
+    details: [
+      "64-block Pairformer (PairformerArgsV2)",
+      "Precision: bf16-mixed",
+      "Diffusion: Boltz2DiffusionParams (γ₀=0.8, ρ=7)",
+      "Default step_scale: 1.5",
+      "use_kernels: custom CUDA kernels (disable with --no_kernels)",
+      "Loaded from boltz2_conf.ckpt",
+    ]
+  },
+  boltz1: {
+    title: "Boltz1 model",
+    desc: "Original Boltz structure prediction model. Smaller and faster than Boltz-2.",
+    details: [
+      "48-block Pairformer",
+      "Precision: fp32",
+      "Diffusion: BoltzDiffusionParams (γ₀=0.605, ρ=8)",
+      "Default step_scale: 1.638",
+      "Loaded from boltz1_conf.ckpt",
+      "Does not support method conditioning",
+    ]
+  },
+  affinity: {
+    title: "Boltz2 Affinity model (optional)",
+    desc: "Separate model checkpoint for predicting binding affinity (ΔG). Only runs if any input has affinity: true in YAML.",
+    details: [
+      "Loaded from boltz2_aff.ckpt",
+      "recycling_steps forced to 5",
+      "diffusion_samples: 5 (default)",
+      "Reads structure predictions as input (not raw structures)",
+      "--affinity_mw_correction: adds MW-based correction term",
+      "Outputs affinity_{id}.json per target",
+    ]
+  },
+  trainer: {
+    title: "PyTorch Lightning Trainer",
+    desc: "Manages distributed inference across GPUs. Automatically uses DDP for multi-GPU setups.",
+    details: [
+      "DDPStrategy with fork start method (spawn on Windows)",
+      "Caps device count to number of predictions",
+      "trainer.predict() runs forward pass only (no grad)",
+      "Callbacks: [BoltzWriter] or [BoltzAffinityWriter]",
+      "default_root_dir: out_dir for logs",
+    ]
+  },
+  struct_out: {
+    title: "BoltzWriter → structure files",
+    desc: "Callback that serializes structure predictions to disk after each batch.",
+    details: [
+      "Output: predictions/{id}/{id}_model_0.mmcif (or .pdb)",
+      "--write_full_pae: saves pae.npz",
+      "--write_full_pde: saves pde.npz",
+      "--write_embeddings: saves s and z embedding npz",
+      "write_confidence_summary: always True for structure",
+    ]
+  },
+  aff_out: {
+    title: "BoltzAffinityWriter → affinity JSON",
+    desc: "Writes affinity prediction results to a JSON file per target.",
+    details: [
+      "Output: predictions/{id}/affinity_{id}.json",
+      "Contains predicted ΔG and uncertainty estimates",
+      "Only runs if record.affinity == True",
+    ]
+  },
+  conf_out: {
+    title: "Confidence scores",
+    desc: "Per-residue and global confidence metrics written alongside structure predictions.",
+    details: [
+      "pLDDT: per-residue local distance difference test",
+      "pTM: predicted TM-score (global fold quality)",
+      "ipTM: interface pTM for complexes",
+      "Included in confidence_summary JSON",
+    ]
+  },
+};
+
+function showTip(el) {
+  const id = el.dataset.id;
+  const d = DATA[id];
+  if (!d) return;
+  document.querySelectorAll('.node').forEach(n => n.classList.remove('active'));
+  el.classList.add('active');
+  const tip = document.getElementById('tooltip');
+  document.getElementById('tip-title').textContent = d.title;
+  document.getElementById('tip-desc').textContent = d.desc;
+  const list = document.getElementById('tip-list');
+  list.innerHTML = d.details.map(s => `<li>${s}</li>`).join('');
+  tip.classList.remove('hidden');
+}
+
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('.node') && !e.target.closest('#tooltip')) {
+    document.getElementById('tooltip').classList.add('hidden');
+    document.querySelectorAll('.node').forEach(n => n.classList.remove('active'));
+  }
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,46 @@
+from Bio.PDB import PDBParser
+import numpy as np
+import sys
+
+
+
+#for that specific peptide, find the distance to the closest peptide in the other thing. keep going for every peptide
+
+
+#step 1 is to find closest peptide distance so for prptide[i] go through listproteinB and find smallest value, store distance
+#step 2 find average of that list
+# repeat opposite for protein B to protein A 
+# add the two 
+#Open pdb and get lists of coordinates for each protein.
+def get_coords(FILE):
+    
+    parser = PDBParser(QUIET=True)
+    structure = parser.get_structure("pdb", FILE)
+
+    coords_A = []
+    coords_B = []
+
+    for model in structure:
+        for chain in model:
+            if chain.id == "A":
+                for atom in chain.get_atoms():
+                    coords_A.append(atom.coord)
+            elif chain.id == "B":
+                for atom in chain.get_atoms():
+                    coords_B.append(atom.coord)
+
+    coords_A = np.array(coords_A)
+    coords_B = np.array(coords_B)
+    return coords_A, coords_B
+
+def smallest_distance(coords_A, coords_B):
+    diffs = coords_A[:,None,:] - coords_B[None,:,:]
+    d2 = np.sum(diffs**2, axis=2) 
+    min_per_A = np.sqrt(d2.min(axis=1))
+    min_per_B = np.sqrt(d2.min(axis=0))
+    return round(float(min_per_A.mean()),2), round(float(min_per_B.mean()),2)
+
+coords_A, coords_B = get_coords(r"C:\Users\maria\OneDrive\Personal Documents\example_AF_output\PIN1_with_peptide_binder_unrelaxed_alphafold2_multimer_v3_model_1_seed_000.pdb")
+print(smallest_distance(coords_A, coords_B))
+
+

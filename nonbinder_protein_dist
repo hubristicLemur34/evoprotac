@@ -1,0 +1,13 @@
+#check if peptide in protein A is closer to a peptide in Binder or a peptide in Protein B. 
+#keep if protein B is closer. 
+#take average of those distances
+
+#TO DO LIST
+#read evoBind2 then evoBind1
+#look through their code implementation
+#src, mc_design_colab.py & mc_design.py 
+
+#clone a github repo and edit [done]
+#think abt where to inject third protein into their code for prediction 
+
+

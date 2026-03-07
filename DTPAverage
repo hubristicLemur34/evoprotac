@@ -1,0 +1,15 @@
+import json
+ 
+def average(file):
+    with open(file) as f:
+        d = json.load(f)
+    list1 = d['plddt'] 
+    avg = 0
+    for i in list1:
+        avg = i + avg
+    avg = avg/len(list1)
+    return round(avg, 2)
+print(average(r"C:\Users\maria\Documents\EvoPepTac\Protein0.pdb"))
+#print(average(r"C:\Users\maria\OneDrive\Personal Documents\example_AF_output\PIN1_with_peptide_binder_scores_alphafold2_multimer_v3_model_1_seed_000.json"))
+#replace with correct path! KEEP THE R so program doesn't misinterpret \u or something
+
