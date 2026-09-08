@@ -18,6 +18,20 @@ from pytorch_lightning.strategies import DDPStrategy
 from pytorch_lightning.utilities import rank_zero_only
 from rdkit import Chem
 from tqdm import tqdm
+from best_seq import best_seq 
+
+from boltz.data.parse.yaml import parse_yaml
+from pathlib import Path
+import numpy as np
+
+from distance_calc_uncorrupted import distance_calculator_cif
+from random_peptide import random_peptide
+from dataclasses import asdict
+
+from pytorch_lightning import Trainer
+from pytorch_lightning.strategies import DDPStrategy
+import shutil
+from dataclasses import replace
 
 from boltz.data import const
 from boltz.data.module.inference import BoltzInferenceDataModule
@@ -32,6 +46,9 @@ from boltz.data.types import MSA, Manifest, Record
 from boltz.data.write.writer import BoltzAffinityWriter, BoltzWriter
 from boltz.model.models.boltz1 import Boltz1
 from boltz.model.models.boltz2 import Boltz2
+
+
+
 
 CCD_URL = "https://huggingface.co/boltz-community/boltz-1/resolve/main/ccd.pkl"
 MOL_URL = "https://huggingface.co/boltz-community/boltz-2/resolve/main/mols.tar"
@@ -312,7 +329,7 @@ def check_inputs(data: Path) -> list[Path]:
                 raise RuntimeError(msg)
     else:
         data = [data]
-
+    print("data in check inputs ", data)
     return data
 
 
@@ -450,7 +467,7 @@ def compute_msa(
     click.echo(f"Calling MSA server for target {target_id} with {len(data)} sequences")
     click.echo(f"MSA server URL: {msa_server_url}")
     click.echo(f"MSA pairing strategy: {msa_pairing_strategy}")
-    
+    print("this is the MSA data", data)
     # Construct auth headers if API key header/value is provided
     auth_headers = None
     if api_key_value:
@@ -520,7 +537,51 @@ def compute_msa(
         msa_path = msa_dir / f"{name}.csv"
         with msa_path.open("w") as f:
             f.write("\n".join(csv_str))
+def process_direct_target(
+    target,
+    out_dir: Path,
+    max_msa_seqs: int = 8192,
+):
+    # create the same output directories as normal
+    records_dir = out_dir / "processed" / "records"
+    structure_dir = out_dir / "processed" / "structures"
+    processed_msa_dir = out_dir / "processed" / "msa"
+    processed_constraints_dir = out_dir / "processed" / "constraints"
+    processed_templates_dir = out_dir / "processed" / "templates"
+    processed_mols_dir = out_dir / "processed" / "mols"
+    predictions_dir = out_dir / "predictions"
 
+    for d in [records_dir, structure_dir, processed_msa_dir,
+              processed_constraints_dir, processed_templates_dir,
+              processed_mols_dir, predictions_dir]:
+        d.mkdir(parents=True, exist_ok=True)
+
+    # dump templates
+    for template_id, template in target.templates.items():
+        name = f"{target.record.id}_{template_id}.npz"
+        template.dump(processed_templates_dir / name)
+
+    # dump constraints
+    target.residue_constraints.dump(
+        processed_constraints_dir / f"{target.record.id}.npz"
+    )
+
+    # dump extra molecules
+    Chem.SetDefaultPickleProperties(Chem.PropertyPickleOptions.AllProps)
+    with (processed_mols_dir / f"{target.record.id}.pkl").open("wb") as f:
+        pickle.dump(target.extra_mols, f)
+
+    # dump structure
+    target.structure.dump(structure_dir / f"{target.record.id}.npz")
+
+    # dump record
+    target.record.dump(records_dir / f"{target.record.id}.json")
+
+    # build and return manifest
+    records = [Record.load(p) for p in records_dir.glob("*.json")]
+    manifest = Manifest(records)
+    manifest.dump(out_dir / "processed" / "manifest.json")
+    return manifest
 
 def process_input(  # noqa: C901, PLR0912, PLR0915, D103
     path: Path,
@@ -558,7 +619,7 @@ def process_input(  # noqa: C901, PLR0912, PLR0915, D103
                 "please provide a .fasta or .yaml file."
             )
             raise RuntimeError(msg)  # noqa: TRY301
-
+        #print("This is the target: ", target)
         # Get target id
         target_id = target.record.id
 
@@ -711,6 +772,7 @@ def process_inputs(
         The manifest of the processed input data.
 
     """
+    print("this is the process input data", data)
     # Validate mutually exclusive authentication methods
     has_basic_auth = msa_server_username and msa_server_password
     has_api_key = api_key_value is not None
@@ -1409,7 +1471,323 @@ def predict(  # noqa: C901, PLR0915, PLR0912
             datamodule=data_module,
             return_predictions=False,
         )
+def process_direct_target(
+    target,
+    out_dir: Path,
+    msa_server_url: str = "https://api.colabfold.com",
+    msa_pairing_strategy: str = "greedy",
+    max_msa_seqs: int = 8192,
+):
+    # create output directories
+    msa_dir = out_dir / "msa"
+    records_dir = out_dir / "processed" / "records"
+    structure_dir = out_dir / "processed" / "structures"
+    processed_msa_dir = out_dir / "processed" / "msa"
+    processed_constraints_dir = out_dir / "processed" / "constraints"
+    processed_templates_dir = out_dir / "processed" / "templates"
+    processed_mols_dir = out_dir / "processed" / "mols"
+    predictions_dir = out_dir / "predictions"
+
+    for d in [msa_dir, records_dir, structure_dir, processed_msa_dir,
+              processed_constraints_dir, processed_templates_dir,
+              processed_mols_dir, predictions_dir]:
+        d.mkdir(parents=True, exist_ok=True)
+
+    # generate MSA for protein chains
+    target_id = target.record.id
+    prot_id = const.chain_type_ids["PROTEIN"]
+    to_generate = {}
+
+    #for chain in target.record.chains:
+        #if (chain.mol_type == prot_id) and (chain.msa_id == 0):
+            #entity_id = chain.entity_id
+            #msa_id = f"{target_id}_{entity_id}"
+            #to_generate[msa_id] = target.sequences[entity_id]
+            #chain.msa_id = msa_dir / f"{msa_id}.csv"
+        #elif chain.msa_id == 0:
+            #chain.msa_id = -1
+    # skip MSA server, create empty placeholders instead
+    from boltz.data.parse.csv import parse_csv
+    import io
+
+    for chain in target.record.chains:
+        if (chain.mol_type == prot_id) and (chain.msa_id == 0):
+            entity_id = chain.entity_id
+            msa_idx = entity_id
+
+            # write a minimal csv MSA file with just the query sequence
+            msa_path = msa_dir / f"{target_id}_{entity_id}.csv"
+            with msa_path.open("w") as f:
+                f.write("key,sequence\n")
+                f.write(f"0,{target.sequences[entity_id]}\n")
+
+            # parse and dump it
+            processed = processed_msa_dir / f"{target_id}_{msa_idx}.npz"
+            if not processed.exists():
+                msa = parse_csv(msa_path, max_seqs=max_msa_seqs)
+                msa.dump(processed)
+
+            chain.msa_id = f"{target_id}_{msa_idx}"
+        elif chain.msa_id == 0:
+            chain.msa_id = -1
+
+    # call MSA server
+    if to_generate:
+        compute_msa(
+            data=to_generate,
+            target_id=target_id,
+            msa_dir=msa_dir,
+            msa_server_url=msa_server_url,
+            msa_pairing_strategy=msa_pairing_strategy,
+        )
+
+    # parse and dump MSA
+    msas = sorted({c.msa_id for c in target.record.chains if c.msa_id != -1})
+    msa_id_map = {}
+    for msa_idx, msa_id in enumerate(msas):
+        msa_path = Path(msa_id)
+        processed = processed_msa_dir / f"{target_id}_{msa_idx}.npz"
+        msa_id_map[str(msa_id)] = f"{target_id}_{msa_idx}"
+        if not processed.exists():
+            if msa_path.suffix == ".csv":
+                msa = parse_csv(msa_path, max_seqs=max_msa_seqs)
+            elif msa_path.suffix == ".a3m":
+                msa = parse_a3m(msa_path, taxonomy=None, max_seqs=max_msa_seqs)
+            msa.dump(processed)
+
+    # update chain msa_ids
+    for c in target.record.chains:
+        if (c.msa_id != -1) and (str(c.msa_id) in msa_id_map):
+            c.msa_id = msa_id_map[str(c.msa_id)]
+
+    # dump templates
+    for template_id, template in target.templates.items():
+        name = f"{target.record.id}_{template_id}.npz"
+        template.dump(processed_templates_dir / name)
+
+    # dump constraints
+    target.residue_constraints.dump(
+        processed_constraints_dir / f"{target.record.id}.npz"
+    )
+
+    # dump extra molecules
+    Chem.SetDefaultPickleProperties(Chem.PropertyPickleOptions.AllProps)
+    with (processed_mols_dir / f"{target.record.id}.pkl").open("wb") as f:
+        pickle.dump(target.extra_mols, f)
+
+    # dump structure
+    target.structure.dump(structure_dir / f"{target.record.id}.npz")
+
+    # dump record
+    target.record.dump(records_dir / f"{target.record.id}.json")
+
+    # build and return manifest
+    records = [Record.load(p) for p in records_dir.glob("*.json")]
+    manifest = Manifest(records)
+    manifest.dump(out_dir / "processed" / "manifest.json")
+    return manifest
+
+
+def distances(myseq):
+    for i in range(1):
+        out_dir = Path("./my_output")
+
+
+        if out_dir.exists():
+            shutil.rmtree(out_dir)
+        out_dir.mkdir(parents=True, exist_ok=True)
+
+        target = parse_yaml(Path("protein1.yaml"), ccd, mol_dir, boltz2=True)
+        target = replace(target, record=replace(target.record, id=f"protein1_iter{i}"))
+
+        print(f"target.record.id is now: {target.record.id}")  # verify it changed
+
+
+        target.sequences[0] = "LWAP"
+        target.sequences[1] = "FYER"
+        target.sequences[2] = myseq
+
+        manifest = process_direct_target(target, out_dir)
+        filtered_manifest = filter_inputs_structure(
+        manifest=manifest,
+        outdir=out_dir,
+        override=True,
+        )
+
+        #load processed data
+        processed_dir = out_dir / "processed"
+        processed = BoltzProcessedInput(
+        manifest=filtered_manifest,
+        targets_dir=processed_dir / "structures",
+        msa_dir=processed_dir / "msa",
+        constraints_dir=(
+            (processed_dir / "constraints")
+            if (processed_dir / "constraints").exists()
+            else None
+            ),
+            template_dir=(
+            (processed_dir / "templates")
+            if (processed_dir / "templates").exists()
+            else None
+            ),
+            extra_mols_dir=(
+                (processed_dir / "mols")
+                if (processed_dir / "mols").exists()
+                else None
+            ),
+        )
+        
+            # set up model parameters
+        diffusion_params = Boltz2DiffusionParams()
+        diffusion_params.step_scale = 1.5
+        pairformer_args = PairformerArgsV2()
+        msa_args = MSAModuleArgs(
+            subsample_msa=False,
+            num_subsampled_msa=1024,
+            use_paired_feature=True,
+        )
+
+        # set up prediction writer
+        pred_writer = BoltzWriter(
+            data_dir=processed.targets_dir,
+            output_dir=out_dir / "predictions",
+            output_format="mmcif",
+            boltz2=True,
+            write_embeddings=False,
+        )
+
+            # set up trainer
+        trainer = Trainer(
+            default_root_dir=out_dir,
+            strategy="auto",
+            callbacks=[pred_writer],
+            accelerator="cpu",
+            devices=1,
+            precision="bf16-mixed",
+        )
+
+        # load model
+        checkpoint = cache / "boltz2_conf.ckpt"
+        steering_args = BoltzSteeringParams()
+        steering_args.fk_steering = False
+        steering_args.physical_guidance_update = False
+
+        model_module = Boltz2.load_from_checkpoint(
+            checkpoint,
+            strict=True,
+            predict_args={
+                "recycling_steps": 3,
+                "sampling_steps": 200,
+                "diffusion_samples": 1,
+                "max_parallel_samples": 5,
+                "write_confidence_summary": True,
+                "write_full_pae": False,
+                "write_full_pde": False,
+            },
+            map_location="cpu",
+            diffusion_process_args=asdict(diffusion_params),
+            ema=False,
+            use_kernels=True,
+            pairformer_args=asdict(pairformer_args),
+            msa_args=asdict(msa_args),
+            steering_args=asdict(steering_args),
+        )
+        model_module.eval()
+
+        # run prediction
+        trainer.predict(
+            model_module,
+            datamodule=Boltz2InferenceDataModule(
+                manifest=processed.manifest,
+                target_dir=processed.targets_dir,
+                msa_dir=processed.msa_dir,
+                mol_dir=mol_dir,
+                num_workers=2,
+                constraints_dir=processed.constraints_dir,
+                template_dir=processed.template_dir,
+                extra_mols_dir=processed.extra_mols_dir,
+            ),
+            return_predictions=False,
+        )
+
+        # print(f"Files created for iteration {i}:")
+        # import os
+        # for root, dirs, files in os.walk(out_dir):
+        #     for file in files:
+        #         print(os.path.join(root, file))
+
+
+    # step 9 - NOW read the CIF file that was just created
+        cif_path = out_dir / "predictions" / f"protein1_iter{i}" / f"protein1_iter{i}_model_0.cif"
+
+
+        if not cif_path.exists():
+            print(f"Warning: CIF not found at {cif_path}, skipping iteration {i}")
+            continue
+
+        with open(cif_path, "r") as cif:
+            new = distance_calculator_cif(cif)
+            print(f"Iteration {i}: sequence={myseq}, distance={new}")
+    return new, myseq
 
 
 if __name__ == "__main__":
-    cli()
+    cache = Path("~/.boltz").expanduser()
+    mol_dir = cache / "mols"
+    ccd = load_canonicals(mol_dir)
+    var = float('inf')
+    best_sequence = None
+    arr = np.empty((2, 2)) 
+
+    results = [] 
+    best = []
+    
+    for i in range(3):
+        myseq = random_peptide(4)
+        dist, seq = distances(myseq)  # unpack the tuple
+        results.append((seq, dist))
+        print(f"Iteration {i}: seq={seq}, dist={dist}")
+
+    # sort by distance, best (lowest) first
+    results.sort(key=lambda x: x[1])
+    top_results = results[:2]
+
+    for seq, dist in top_results:
+        best_dist = dist
+        top_seq = seq
+        for i in range(2):
+            random_aa_changed = best_seq(top_seq)
+            rd, riddle = distances(random_aa_changed)
+            if rd < best_dist:
+                top_seq = riddle
+                best_dist = rd
+            else:
+                pass
+        best.append((top_seq, best_dist))
+        print(f"the best seq {best}")
+ 
+
+
+
+    #print("\nAll results:")
+    #for seq, dist in results:
+       # print(f"  {seq}: {dist}")
+
+    #print(f"\nBest sequence: {results[0][0]} with distance {results[0][1]}")
+ 
+
+    #for k in top5
+        #if distances(best_seq)
+        # # best_seq(k[0],k[1],200)
+        # print("The best sequence is ...")
+        # np.append(arr, , axis=1)
+
+    
+
+    
+    #dist = distances(random_peptide(10))[0]
+
+       
+    #print(f"Best sequence foun with distance {dist}")
+
+

@@ -18,4 +18,4 @@ def cif_to_pdb(cif_file, pdb_file=None):
     
     return pdb_file
 
-print(cif_to_pdb(r"\\wsl.localhost\Ubuntu-22.04\home\marianne\results1_yaml\boltz_results_protein1\predictions\protein1\protein1_model_0.cif"))
+#print(cif_to_pdb(r"\\wsl.localhost\Ubuntu-22.04\home\marianne\results1_yaml\boltz_results_protein1\predictions\protein1\protein1_model_0.cif"))
